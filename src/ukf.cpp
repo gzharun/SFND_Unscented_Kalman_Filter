@@ -174,6 +174,60 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
         return;
     }
 
+    // Measurements dimention
+    int n_z = 2;
+
+    // Sigma points in measurement space
+    MatrixXd Zsig = MatrixXd(n_z, 2 * n_aug_ + 1);
+
+    // Mean predicted measurement
+    VectorXd z_pred = VectorXd(n_z);
+
+    // Measurement covariance matrix S
+    MatrixXd S = MatrixXd(n_z, n_z);
+
+    // transform sigma points into measurement space
+    for (int i = 0; i < Zsig.cols(); ++i) {
+        float px = Xsig_pred_(0, i);
+        float py = Xsig_pred_(1, i);
+
+        Zsig.col(i) << px, px;
+    }
+
+    // Mean predicted measurement
+    for (int i = 0; i < Zsig.rows(); ++i) {
+        z_pred(i) = Zsig.row(i) * weights;
+    }
+
+    // Measurement covariance matrix S
+    for (int i = 0; i < Zsig.cols(); ++i) {
+        VectorXd z_pred_centered(n_z);
+        z_pred_centered = Zsig.col(i) - z_pred;
+
+        S += weights(i) * z_pred_centered * z_pred_centered.transpose();
+    }
+
+    MatrixXd R(n_z, n_z);
+    R << std_laspx_ * std_laspx_, 0,
+            0, std_laspy_ * std_laspy_;
+    S += R;
+
+    // Cross correlation matrix
+    MatrixXd Tc = MatrixXd(n_x_, n_z);
+    for (int i = 0; i < Xsig_pred_.cols(); ++i) {
+        VectorXd x_centered = Xsig_pred_.col(i) - x_;
+        VectorXd z_centered = Zsig.col(i) - z_pred;
+
+        Tc += weights(i) * x_centered * z_centered.transpose();
+    }
+
+    // calculate Kalman gain K;
+    MatrixXd K(n_x_, n_z);
+    K = Tc * S.inverse();
+
+    // update state mean and covariance matrix
+    x_ += K * (meas_package.raw_measurements_ - z_pred);
+    P_ -= K * S * K.transpose();
 }
 
 void UKF::UpdateRadar(MeasurementPackage meas_package) {
