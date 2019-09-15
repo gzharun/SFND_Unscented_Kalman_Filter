@@ -1,10 +1,12 @@
 #include "ukf.h"
 #include <cassert>
+#include <iostream>
 
 #include "Eigen/Dense"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+using namespace std;
 
 /**
  * Initializes Unscented Kalman filter
@@ -13,13 +15,13 @@ UKF::UKF() {
   is_initialized_ = false;
 
   // if this is false, laser measurements will be ignored (except during init)
-  use_laser_ = false;
+  use_laser_ = true;
 
   // if this is false, radar measurements will be ignored (except during init)
   use_radar_ = true;
 
   // initial state vector
-  x_ = VectorXd(5);
+  x_ = VectorXd::Zero(5);
 
   // initial covariance matrix
   P_ = MatrixXd::Identity(5, 5);
@@ -64,13 +66,13 @@ UKF::UKF() {
 
   lambda_ = 3 - n_aug_;
 
-  Xsig_pred_ = MatrixXd(n_x_, 2 * n_aug_ + 1);
+  Xsig_pred_ = MatrixXd::Zero(n_x_, 2 * n_aug_ + 1);
 
-  weights = VectorXd(2 * n_aug_ + 1);
+  weights_ = VectorXd::Zero(2 * n_aug_ + 1);
   // set weights
-  weights(0) = lambda_ / (lambda_ + n_aug_);
-  for (int i = 1; i < weights.rows(); ++i) {
-    weights(i) = 0.5 / (lambda_ + n_aug_);
+  weights_(0) = lambda_ / (lambda_ + n_aug_);
+  for (int i = 1; i < weights_.rows(); ++i) {
+    weights_(i) = 0.5 / (lambda_ + n_aug_);
   }
 }
 
@@ -99,13 +101,15 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
 }
 
 void UKF::Prediction(double delta_t) {
+    const auto dt = delta_t / 1000000;
+
     // Generate sigma points
     // Augmented state
-    VectorXd x_aug = VectorXd(7);
+    VectorXd x_aug = VectorXd::Zero(7);
     // Augmented state covariance
-    MatrixXd P_aug = MatrixXd(7, 7);
+    MatrixXd P_aug = MatrixXd::Zero(7, 7);
     // Sigma point matrix
-    MatrixXd Xsig_aug = MatrixXd(n_aug_, 2 * n_aug_ + 1);
+    MatrixXd Xsig_aug = MatrixXd::Zero(n_aug_, 2 * n_aug_ + 1);
 
     x_aug.head(n_x_) = x_;
     x_aug.tail(2) << 0, 0;
@@ -135,34 +139,36 @@ void UKF::Prediction(double delta_t) {
         float nua = Xsig_aug(5, i);
         float nup = Xsig_aug(6, i);
 
-        float dt2 = delta_t * delta_t / 2;
+        float dt2 = dt * dt / 2;
         if (std::abs(psi_d) < 0.001) {
-            px += v * cos(psi) * delta_t;
-            py += v * sin(psi) * delta_t;
+            px += v * cos(psi) * dt;
+            py += v * sin(psi) * dt;
         } else {
-            px += v * (sin(psi + psi_d * delta_t) - sin(psi)) / psi_d;
-            py += v * (-cos(psi + psi_d * delta_t) + cos(psi)) / psi_d;
-            psi += psi_d * delta_t;
+            px += v * (sin(psi + psi_d * dt) - sin(psi)) / psi_d;
+            py += v * (-cos(psi + psi_d * dt) + cos(psi)) / psi_d;
+            psi += dt * dt;
         }
         px += dt2 * cos(psi) * nua;
         py += dt2 * sin(psi) * nua;
-        v += delta_t * nua;
+        v += dt * nua;
         psi += dt2 * nup;
-        psi_d += delta_t * nup;
+        psi_d += dt * nup;
 
         Xsig_pred_.col(i) << px, py, v, psi, psi_d;
     }
 
     // Prediction
+    x_.fill(0.);
     for (int i = 0; i < Xsig_pred_.rows(); ++i) {
-        x_(i) = Xsig_pred_.row(i) * weights;
+        x_(i) = Xsig_pred_.row(i) * weights_;
     }
 
+    P_.fill(0.);
     for (int i = 0; i < Xsig_pred_.cols(); ++i) {
         VectorXd x_pred_centered = Xsig_pred_.col(i) - x_;
         while (x_pred_centered(3) > M_PI) x_pred_centered(3) -= 2*M_PI;
         while (x_pred_centered(3) <-M_PI) x_pred_centered(3) += 2*M_PI;
-        P_ += weights(i) * x_pred_centered * x_pred_centered.transpose();
+        P_ += weights_(i) * x_pred_centered * x_pred_centered.transpose();
     }
 }
 
@@ -171,63 +177,66 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
         x_ << meas_package.raw_measurements_[0], meas_package.raw_measurements_[1], 0, 0, 0;
         time_us_ = meas_package.timestamp_;
         is_initialized_ = true;
+
+        cout << x_ << endl;
         return;
     }
 
     // Measurements dimention
     int n_z = 2;
 
-    // Sigma points in measurement space
-    MatrixXd Zsig = MatrixXd(n_z, 2 * n_aug_ + 1);
-
-    // Mean predicted measurement
-    VectorXd z_pred = VectorXd(n_z);
-
-    // Measurement covariance matrix S
-    MatrixXd S = MatrixXd(n_z, n_z);
-
-    // transform sigma points into measurement space
+    // Sigma points into measurement space
+    MatrixXd Zsig = MatrixXd::Zero(n_z, 2 * n_aug_ + 1);
     for (int i = 0; i < Zsig.cols(); ++i) {
         float px = Xsig_pred_(0, i);
         float py = Xsig_pred_(1, i);
 
-        Zsig.col(i) << px, px;
+        Zsig.col(i) << px, py;
     }
 
     // Mean predicted measurement
+    VectorXd z_pred = VectorXd::Zero(n_z);
     for (int i = 0; i < Zsig.rows(); ++i) {
-        z_pred(i) = Zsig.row(i) * weights;
+        z_pred(i) = Zsig.row(i) * weights_;
     }
 
     // Measurement covariance matrix S
+    MatrixXd S = MatrixXd::Zero(n_z, n_z);
     for (int i = 0; i < Zsig.cols(); ++i) {
-        VectorXd z_pred_centered(n_z);
-        z_pred_centered = Zsig.col(i) - z_pred;
-
-        S += weights(i) * z_pred_centered * z_pred_centered.transpose();
+        VectorXd z_pred_centered = Zsig.col(i) - z_pred;
+        while (z_pred_centered(1) > M_PI) z_pred_centered(1) -= 2*M_PI;
+        while (z_pred_centered(1) <-M_PI) z_pred_centered(1) += 2*M_PI;
+        S += weights_(i) * z_pred_centered * z_pred_centered.transpose();
     }
 
-    MatrixXd R(n_z, n_z);
+    MatrixXd R = MatrixXd::Zero(n_z, n_z);
     R << std_laspx_ * std_laspx_, 0,
             0, std_laspy_ * std_laspy_;
     S += R;
 
     // Cross correlation matrix
-    MatrixXd Tc = MatrixXd(n_x_, n_z);
+    MatrixXd Tc = MatrixXd::Zero(n_x_, n_z);
     for (int i = 0; i < Xsig_pred_.cols(); ++i) {
         VectorXd x_centered = Xsig_pred_.col(i) - x_;
-        VectorXd z_centered = Zsig.col(i) - z_pred;
+        while (x_centered(3) > M_PI) x_centered(3) -= 2*M_PI;
+        while (x_centered(3) <-M_PI) x_centered(3) += 2*M_PI;
 
-        Tc += weights(i) * x_centered * z_centered.transpose();
+        VectorXd z_centered = Zsig.col(i) - z_pred;
+        while (z_centered(1) > M_PI) z_centered(1) -= 2*M_PI;
+        while (z_centered(1) <-M_PI) z_centered(1) += 2*M_PI;
+
+        Tc += weights_(i) * x_centered * z_centered.transpose();
     }
 
     // calculate Kalman gain K;
-    MatrixXd K(n_x_, n_z);
+    MatrixXd K = MatrixXd::Zero(n_x_, n_z);
     K = Tc * S.inverse();
 
     // update state mean and covariance matrix
     x_ += K * (meas_package.raw_measurements_ - z_pred);
     P_ -= K * S * K.transpose();
+
+    time_us_ = meas_package.timestamp_;
 }
 
 void UKF::UpdateRadar(MeasurementPackage meas_package) {
@@ -238,6 +247,8 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
               meas_package.raw_measurements_[1], 0;
         time_us_ = meas_package.timestamp_;
         is_initialized_ = true;
+
+        cout << x_ << endl;
         return;
     }
 
@@ -245,15 +256,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
     int n_z = 3;
 
     // Sigma points in measurement space
-    MatrixXd Zsig = MatrixXd(n_z, 2 * n_aug_ + 1);
-
-    // Mean predicted measurement
-    VectorXd z_pred = VectorXd(n_z);
-
-    // Measurement covariance matrix S
-    MatrixXd S = MatrixXd(n_z,n_z);
-
-    // transform sigma points into measurement space
+    MatrixXd Zsig = MatrixXd::Zero(n_z, 2 * n_aug_ + 1);
     for (int i = 0; i < Zsig.cols(); ++i) {
         float r = std::sqrt(Xsig_pred_(0, i) * Xsig_pred_(0, i) +
                             Xsig_pred_(1, i) * Xsig_pred_(1, i));
@@ -265,38 +268,40 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
     }
 
     // Mean predicted measurement
+    VectorXd z_pred = VectorXd::Zero(n_z);
     for (int i = 0; i < Zsig.rows(); ++i) {
-        z_pred(i) = Zsig.row(i) * weights;
+        z_pred(i) = Zsig.row(i) * weights_;
     }
 
     // Measurement covariance matrix S
+    MatrixXd S = MatrixXd::Zero(n_z, n_z);
     for (int i = 0; i < Zsig.cols(); ++i) {
-        VectorXd z_pred_centered(n_z);
-        z_pred_centered = Zsig.col(i) - z_pred;
-
-        S += weights(i) * z_pred_centered * z_pred_centered.transpose();
+        VectorXd z_pred_centered = Zsig.col(i) - z_pred;
+        S += weights_(i) * z_pred_centered * z_pred_centered.transpose();
     }
 
-    MatrixXd R(n_z, n_z);
+    MatrixXd R = MatrixXd::Zero(n_z, n_z);
     R << std_radr_ * std_radr_, 0, 0,
          0, std_radphi_ * std_radphi_, 0,
          0, 0, std_radrd_ * std_radrd_;
     S += R;
 
     // Cross correlation matrix
-    MatrixXd Tc = MatrixXd(n_x_, n_z);
+    MatrixXd Tc = MatrixXd::Zero(n_x_, n_z);
     for (int i = 0; i < Xsig_pred_.cols(); ++i) {
         VectorXd x_centered = Xsig_pred_.col(i) - x_;
         VectorXd z_centered = Zsig.col(i) - z_pred;
 
-        Tc += weights(i) * x_centered * z_centered.transpose();
+        Tc += weights_(i) * x_centered * z_centered.transpose();
     }
 
     // calculate Kalman gain K;
-    MatrixXd K(n_x_, n_z);
+    MatrixXd K = MatrixXd::Zero(n_x_, n_z);
     K = Tc * S.inverse();
 
     // update state mean and covariance matrix
     x_ += K * (meas_package.raw_measurements_ - z_pred);
     P_ -= K * S * K.transpose();
+
+    time_us_ = meas_package.timestamp_;
 }
