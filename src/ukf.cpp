@@ -30,7 +30,7 @@ UKF::UKF() {
   std_a_ = 3;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = M_PI / 8;
+  std_yawdd_ = M_PI / 4;
   
   /**
    * DO NOT MODIFY measurement noise values below.
@@ -140,7 +140,7 @@ void UKF::Prediction(double delta_t) {
         float nup = Xsig_aug(6, i);
 
         float dt2 = dt * dt / 2;
-        if (std::abs(psi_d) < 0.001) {
+        if (psi_d == 0.) {
             px += v * cos(psi) * dt;
             py += v * sin(psi) * dt;
         } else {
@@ -258,13 +258,19 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
     // Sigma points in measurement space
     MatrixXd Zsig = MatrixXd::Zero(n_z, 2 * n_aug_ + 1);
     for (int i = 0; i < Zsig.cols(); ++i) {
-        float r = std::sqrt(Xsig_pred_(0, i) * Xsig_pred_(0, i) +
-                            Xsig_pred_(1, i) * Xsig_pred_(1, i));
-        float psi = std::atan(Xsig_pred_(1, i) / Xsig_pred_(0, i));
-        float r_d = Xsig_pred_(2, i) * (Xsig_pred_(0, i) * cos(Xsig_pred_(3, i)) +
-                    Xsig_pred_(1, i) * sin(Xsig_pred_(3, i))) / r;
+        float p_x = Xsig_pred_(0,i);
+        float p_y = Xsig_pred_(1,i);
+        float v  = Xsig_pred_(2,i);
+        float phi = Xsig_pred_(3,i);
 
-        Zsig.col(i) << r, psi, r_d;
+        float vx = cos(phi) * v;
+        float vy = sin(phi) * v;
+
+        // Measurement model
+        float r = sqrt(p_x*p_x + p_y*p_y);
+        float psi = atan2(p_y, p_x);
+        float rd = (p_x * vx + p_y * vy) / r;
+        Zsig.col(i) << r, psi, rd;
     }
 
     // Mean predicted measurement
@@ -277,6 +283,8 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
     MatrixXd S = MatrixXd::Zero(n_z, n_z);
     for (int i = 0; i < Zsig.cols(); ++i) {
         VectorXd z_pred_centered = Zsig.col(i) - z_pred;
+        while (z_pred_centered(1) > M_PI) z_pred_centered(1) -= 2*M_PI;
+        while (z_pred_centered(1) <-M_PI) z_pred_centered(1) += 2*M_PI;
         S += weights_(i) * z_pred_centered * z_pred_centered.transpose();
     }
 
@@ -290,17 +298,25 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
     MatrixXd Tc = MatrixXd::Zero(n_x_, n_z);
     for (int i = 0; i < Xsig_pred_.cols(); ++i) {
         VectorXd x_centered = Xsig_pred_.col(i) - x_;
+        while (x_centered(3) > M_PI) x_centered(3) -= 2*M_PI;
+        while (x_centered(3) <-M_PI) x_centered(3) += 2*M_PI;
+
         VectorXd z_centered = Zsig.col(i) - z_pred;
+        while (z_centered(1) > M_PI) z_centered(1) -= 2*M_PI;
+        while (z_centered(1) <-M_PI) z_centered(1) += 2*M_PI;
 
         Tc += weights_(i) * x_centered * z_centered.transpose();
     }
 
-    // calculate Kalman gain K;
+    // Kalman gain K calculation
     MatrixXd K = MatrixXd::Zero(n_x_, n_z);
     K = Tc * S.inverse();
 
-    // update state mean and covariance matrix
-    x_ += K * (meas_package.raw_measurements_ - z_pred);
+    // State mean and covariance matrix update
+    VectorXd z_centered = meas_package.raw_measurements_ - z_pred;
+    while (z_centered(1)> M_PI) z_centered(1) -= 2.*M_PI;
+    while (z_centered(1)<-M_PI) z_centered(1) += 2.*M_PI;
+    x_ += K * z_centered;
     P_ -= K * S * K.transpose();
 
     time_us_ = meas_package.timestamp_;
