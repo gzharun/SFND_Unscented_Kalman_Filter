@@ -95,6 +95,10 @@ class UKF {
 
   // Sigma point spreading parameter
   double lambda_;
+
+  // NIS
+  float eps_laser_;
+  float eps_radar_;
 };
 
 #endif  // UKF_H

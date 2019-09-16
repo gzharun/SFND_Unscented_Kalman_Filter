@@ -42,6 +42,8 @@ class Tools {
 	// Members
 	std::vector<VectorXd> estimations;
 	std::vector<VectorXd> ground_truth;
+    std::vector<float> nis_eps_laser;
+    std::vector<float> nis_eps_radar;
 	
 	double noise(double stddev, long long seedNum);
 	lmarker lidarSense(Car& car, pcl::visualization::PCLVisualizer::Ptr& viewer, long long timestamp, bool visualize);
@@ -51,6 +53,7 @@ class Tools {
 	* A helper method to calculate RMSE.
 	*/
 	VectorXd CalculateRMSE(const vector<VectorXd> &estimations, const vector<VectorXd> &ground_truth);
+    std::pair<float, float> CalculateNISbelowThresh();
 	void savePcd(typename pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::string file);
 	pcl::PointCloud<pcl::PointXYZ>::Ptr loadPcd(std::string file);
 	

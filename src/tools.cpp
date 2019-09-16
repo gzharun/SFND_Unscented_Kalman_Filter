@@ -1,9 +1,16 @@
 #include <iostream>
 #include <random>
+#include <unordered_map>
 #include "tools.h"
 
 using namespace std;
 using std::vector;
+
+namespace {
+    constexpr int df_laser = 2;
+    constexpr int df_radar = 3;
+    std::unordered_map<int, float> x2 = {{2, 5.991}, {3, 7.815}};
+}
 
 Tools::Tools() {}
 
@@ -88,7 +95,7 @@ void Tools::ukfResults(Car car, pcl::visualization::PCLVisualizer::Ptr& viewer, 
 VectorXd Tools::CalculateRMSE(const vector<VectorXd> &estimations,
                               const vector<VectorXd> &ground_truth) {
   
-    VectorXd rmse(4);
+  VectorXd rmse(4);
 	rmse << 0,0,0,0;
 
 	// check the validity of the following inputs:
@@ -118,6 +125,26 @@ VectorXd Tools::CalculateRMSE(const vector<VectorXd> &estimations,
 
 	//return the result
 	return rmse;
+}
+
+std::pair<float, float> Tools::CalculateNISbelowThresh()
+{
+  int cnt_laser = 0;
+  for (float x : nis_eps_laser)
+  {
+    if (x < x2[df_laser])
+      ++cnt_laser;
+  }
+
+  int cnt_radar = 0;
+  for (float x : nis_eps_radar)
+  {
+    if (x < x2[df_radar])
+      ++cnt_radar;
+  }
+
+  return {static_cast<float>(cnt_laser) / nis_eps_laser.size(),
+          static_cast<float>(cnt_radar) / nis_eps_radar.size()};
 }
 
 void Tools::savePcd(typename pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, std::string file)
