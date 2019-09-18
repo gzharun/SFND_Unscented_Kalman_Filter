@@ -22,7 +22,7 @@ public:
 	// Set which cars to track with UKF
 	std::vector<bool> trackCars = {true,true,true};
 	// Visualize sensor measurements
-	bool visualize_lidar = true;
+	bool visualize_lidar = false;
 	bool visualize_radar = true;
 	bool visualize_pcd = false;
 	// Predict path in the future using UKF
@@ -140,9 +140,16 @@ public:
     			double v2 = sin(yaw)*v;
 				estimate << traffic[i].ukf.x_[0], traffic[i].ukf.x_[1], v1, v2;
 				tools.estimations.push_back(estimate);
-	
+	            tools.nis_eps_laser.push_back(traffic[i].ukf.eps_laser_);
+                tools.nis_eps_radar.push_back(traffic[i].ukf.eps_radar_);
 			}
 		}
+
+        auto nis_below_thresh = tools.CalculateNISbelowThresh();
+        viewer->addText("NIS below thresh:", 30, 400, 20, 1, 1, 1, "nis");
+        viewer->addText("Laser: "+std::to_string(nis_below_thresh.first), 30, 375, 20, 1, 1, 1, "laser_nis");
+        viewer->addText("Radar: "+std::to_string(nis_below_thresh.second), 30, 350, 20, 1, 1, 1, "radar_nis");
+
 		viewer->addText("Accuracy - RMSE:", 30, 300, 20, 1, 1, 1, "rmse");
 		VectorXd rmse = tools.CalculateRMSE(tools.estimations, tools.ground_truth);
 		viewer->addText(" X: "+std::to_string(rmse[0]), 30, 275, 20, 1, 1, 1, "rmse_x");
@@ -152,7 +159,6 @@ public:
 
 		if(timestamp > 1.0e6)
 		{
-
 			if(rmse[0] > rmseThreshold[0])
 			{
 				rmseFailLog[0] = rmse[0];

@@ -129,19 +129,13 @@ VectorXd Tools::CalculateRMSE(const vector<VectorXd> &estimations,
 
 std::pair<float, float> Tools::CalculateNISbelowThresh()
 {
-  int cnt_laser = 0;
-  for (float x : nis_eps_laser)
-  {
-    if (x < x2[df_laser])
-      ++cnt_laser;
-  }
+  auto cond = x2[df_laser];
+  int cnt_laser = std::count_if(nis_eps_laser.begin(), nis_eps_laser.end(),
+                                [cond](float a) { return a < cond; });
 
-  int cnt_radar = 0;
-  for (float x : nis_eps_radar)
-  {
-    if (x < x2[df_radar])
-      ++cnt_radar;
-  }
+  cond = x2[df_radar];
+  int cnt_radar = std::count_if(nis_eps_radar.begin(), nis_eps_radar.end(),
+                                [cond](float a) { return a < cond; });
 
   return {static_cast<float>(cnt_laser) / nis_eps_laser.size(),
           static_cast<float>(cnt_radar) / nis_eps_radar.size()};
