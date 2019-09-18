@@ -180,7 +180,6 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
     time_us_ = meas_package.timestamp_;
     is_initialized_ = true;
 
-    cout << x_ << endl;
     return;
   }
 
@@ -253,7 +252,6 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
     time_us_ = meas_package.timestamp_;
     is_initialized_ = true;
 
-    cout << x_ << endl;
     return;
   }
 
