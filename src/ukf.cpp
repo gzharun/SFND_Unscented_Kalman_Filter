@@ -23,10 +23,10 @@ UKF::UKF() {
   // initial state vector
   x_ = VectorXd::Zero(5);
 
-  // initial covariance matrix
+  // initial covariance matrix, estimate variance for unmeasured values
   P_ = MatrixXd::Identity(5, 5);
-  P_(3,3) = 10;
-  P_(4,4) = 10;
+  P_(3,3) = 0.0009;
+  P_(4,4) = 0.09;
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
   std_a_ = 1;
@@ -263,18 +263,18 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   // Sigma points in measurement space
   MatrixXd Zsig = MatrixXd::Zero(n_z, 2 * n_aug_ + 1);
   for (int i = 0; i < Zsig.cols(); ++i) {
-    float p_x = Xsig_pred_(0,i);
-    float p_y = Xsig_pred_(1,i);
-    float v  = Xsig_pred_(2,i);
-    float phi = Xsig_pred_(3,i);
+    const float p_x = Xsig_pred_(0,i);
+    const float p_y = Xsig_pred_(1,i);
+    const float v  = Xsig_pred_(2,i);
+    const float phi = Xsig_pred_(3,i);
 
-    float vx = cos(phi) * v;
-    float vy = sin(phi) * v;
+    const float vx = cos(phi) * v;
+    const float vy = sin(phi) * v;
 
     // Measurement model
-    float r = sqrt(p_x*p_x + p_y*p_y);
-    float psi = atan2(p_y, p_x);
-    float rd = (p_x * vx + p_y * vy) / r;
+    const float r = sqrt(p_x*p_x + p_y*p_y);
+    const float psi = atan2(p_y, p_x);
+    const float rd = (p_x * vx + p_y * vy) / r;
     Zsig.col(i) << r, psi, rd;
   }
 
